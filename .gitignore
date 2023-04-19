@@ -1,14 +1,13 @@
 # Clion
 .idea/
+.cache/
 cmake-build-*/
+build/
 
-*.bin
-*.elf
-*.map
-*.cpe
-*.ps-exe
 
 # for nugget mirror
 *.dep
 *.o
 *.a
+
+**/compile_commands.json
