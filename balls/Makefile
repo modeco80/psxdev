@@ -1,34 +1,23 @@
 # Balls makefile
-# This is also a sort of template for the common.mk buildsystem.
 
-PROJ = balls
-TARGET_TYPE = exe
-OBJS = obj/main.o
+BINDIR=bin/
 
-# Directories holding projects that need to be built before this target is built go here.
-DEPENDENT_PROJECTS = testlib/
+TARGET = balls
+TYPE = ps-exe
 
-# Libraries we need to link to. SN/Runtime Library ones should probably be listed first.
-LIBS = libsn.lib \
-	testlib/lib/libtest.lib \
-	libpad.lib \
-	libapi.lib \
-	libetc.lib \
-	libgpu.lib \
-	libc.lib
-	
-# Applicable source directories for this target go here.
-VPATH = src/
+SRCS = src/main.cpp \
+	../third_party/nugget/common/crt0/crt0.s \
 
+CPPFLAGS += -I../third_party/nugget/psyq/include
+LDFLAGS += -L../third_party/nugget/psyq/lib
 
-# Some generic Make boilerplate - this is really just here
-# to let you customize build flow or add your own pre/post-build functionality
-# for say, if you're building a game and want to pack assets/build a CD image/etc
+LDFLAGS += -Wl,--start-group
+LDFLAGS += -lapi
+LDFLAGS += -lc
+LDFLAGS += -letc
+LDFLAGS += -lgpu
+LDFLAGS += -lgte
+LDFLAGS += -lpad
+LDFLAGS += -Wl,--end-group
 
-all: all-dependent-projects bin/$(PROJ).exe
-clean: clean-common
-
-run: bin/$(PROJ).exe
-	.\run.cmd $<
-
-include $(PSYQ_ROOT)/make/common.mk
+include ../third_party/nugget/common.mk
