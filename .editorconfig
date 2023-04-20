@@ -1,0 +1,8 @@
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+indent_style = tab
+# if this is changed please change it in the .clang-format so that nothing explodes
+indent_size = 4
