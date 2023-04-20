@@ -68,8 +68,8 @@ struct PrimitiveBuffer {
 	}
 
 	/**
-	 * Pull back the current pointer to the beginnign. Should be called after the frame is finished rendering
-	 * (e.g: after DrawSync(), since that waits for the GPU to draw all primitives).
+	 * Pull back the current pointer to the beginning. 
+	 * Should be called at the start of a frame if always allocating GPU primitives.
 	 */
 	void Reset() { cur = begin; }
 
@@ -85,9 +85,6 @@ struct DrawBuffer {
 	DISPENV disp; ///< Display environment.
 
 	u_long ot[OTSIZE];
-	//SPRT_16 sprt[MAXOBJ]; ///< Sprite data
-	PrimitiveBuffer primBuf;
-
 	u_short clut[32]; // texture CLUT entries
 
 	template<class T>
@@ -95,9 +92,29 @@ struct DrawBuffer {
 		::AddPrim(&ot[0], static_cast<void*>(primPtr));
 	}
 
-	// Initalize this draw buffer.
-	void Init(u8* primBufAddr) {
+	void FrameInit() {
+		ClearOTag(&ot[0], OTSIZE);
+	}
 
+	void FrameDraw() {
+		PutDispEnv(&disp);
+
+		// update drawing environment
+#ifdef OTENV
+		DrawOTagEnv(ot, &draw);
+#else
+		PutDrawEnv(cdb->draw);
+		// render primitives entered in the OT
+		DrawOTag(ot);
+#endif
+
+#ifdef DEBUG
+		DumpOTag(cdb->ot);
+#endif
+	}
+
+	// Initalize this draw buffer.
+	void Init() {
 		// set BG color
 		draw.isbg = 1;
 		setRGB0(&draw, 60, 120, 120);
@@ -115,24 +132,10 @@ struct DrawBuffer {
 			DumpClut(clut[i]);
 #endif
 		}
-
-		primBuf.Init(primBufAddr, 0x1ffff);
-
-#if 0
-		// Initialize things that never change for each sprite
-		for(int i = 0; i < MAXOBJ; i++) {
-			setSprt16(&sprt[i]);	   // set SPRT_16
-			SetSemiTrans(&sprt[i], 1); // semi-ambient is ON
-			SetShadeTex(&sprt[i], 1);  // shaded texture is OFF
-			setUV0(&sprt[i], 0, 0);	   // texture uv is (0,0)
-			(&sprt[i])->clut = clut[i % 32];
-		}
-#endif
 	}
 };
 
-/*
- * Position Buffer*/
+/* Ball repressentation */
 struct Ball {
 	u8 clutIndex;
 	u_short x, y;	/* current point*/
@@ -151,10 +154,12 @@ struct Ball {
 
 class BallsDemo {
 	DrawBuffer db[2]; ///< The draw buffers
-	DrawBuffer* cdb;  ///< Pointer to a given draw buffer
-	int nobj;
+	DrawBuffer* cdb = &db[0];  ///< Pointer to a given draw buffer
+	u32 nobj = 1;
 	Ball objpos[MAXOBJ];
-	bool shouldExit;
+	bool shouldExit = false;
+
+	PrimitiveBuffer primBuf;
 
 	static void OnVSync() {
 		/* print absolute VSync count */
@@ -162,12 +167,6 @@ class BallsDemo {
 	}
 
    public:
-	BallsDemo() {
-		// Do some rudimentary initalization.
-		cdb = &db[0];
-		shouldExit = false;
-		nobj = 1;
-	}
 
 	void Init() {
 		PadInit(0);
@@ -190,8 +189,10 @@ class BallsDemo {
 		SetDumpFnt(FntOpen(16, 16, 256, 200, 0, 512));
 
 		// initialize drawing buffers
-		db[0].Init(__builtin_bit_cast(u8*, 0x80020000));
-		db[1].Init(__builtin_bit_cast(u8*, 0x80030000));
+		db[0].Init();
+		db[1].Init();
+
+		primBuf.Init(__builtin_bit_cast(u8*, 0x80020000), 0x1ffff);
 
 		// Allocate primitives
 		AllocAndInitPrims();
@@ -206,9 +207,9 @@ class BallsDemo {
 
 	bool ShouldExit() const { return shouldExit; }
 
-	void AllocAndInitPrimsOnDb(DrawBuffer& db) {
-		db.primBuf.Reset();
-		auto* prims = db.primBuf.AllocPrim<SPRT_16>(nobj);
+	void AllocAndInitPrims() {
+		primBuf.Reset();
+		auto* prims = primBuf.AllocPrim<SPRT_16>(nobj);
 
 		for(u32 i = 0; i < nobj; ++i) {
 			setSprt16(&prims[i]);	   // set SPRT_16
@@ -222,19 +223,12 @@ class BallsDemo {
 		}
 	}
 
-	void AllocAndInitPrims() {
-		AllocAndInitPrimsOnDb(db[0]);
-		AllocAndInitPrimsOnDb(db[1]);
-	}
 
 	void Frame() {
 		this->ReadPad();
 
 		// Swap the current draw buffer
 		cdb = (cdb == &db[0]) ? &db[1] : &db[0];
-
-		// Reset the primitive buffer to the start again, so we don't accidentally overrun
-		cdb->primBuf.Reset();
 
 #ifdef DEBUG
 		// dump draw buffer stuff
@@ -243,11 +237,10 @@ class BallsDemo {
 		DumpTPage(cdb->draw.tpage);
 #endif
 
-		// Clear the current ordering table
-		ClearOTag(&cdb->ot[0], OTSIZE);
+		cdb->FrameInit();
 
 		// update sprites
-		for(int i = 0; i < nobj; i++) {
+		for(u32 i = 0; i < nobj; i++) {
 			int x;
 			int y;
 
@@ -262,27 +255,14 @@ class BallsDemo {
 
 		// Wait for end of drawing
 		DrawSync(0);
-		PutDispEnv(&cdb->disp);
 
-		// update drawing environment
-#ifdef OTENV
-		DrawOTagEnv(cdb->ot, &cdb->draw);
-#else
-		PutDrawEnv(&cdb->draw);
-		// render primitives entered in the OT
-		DrawOTag(cdb->ot);
-#endif
-
-#ifdef DEBUG
-		DumpOTag(cdb->ot);
-#endif
-
+		// Draw primitives
+		cdb->FrameDraw();
 
 		// print the number of balls and the elapsed time
 		FntPrint("sprite = %d\n", nobj);
 		FntPrint("total time = %d\n", VSync(0));
 		FntFlush(-1);
-
 	}
 
 	void ReadPad() {
@@ -306,7 +286,9 @@ class BallsDemo {
 
 		limitRange(nobj, 1, MAXOBJ - 1); // set n to 1<=n<= (MAXOBJ-1). see libgpu.h
 
-		// Re-allocate primitives.
+		// Re-allocate primitives if they need to be re-allocated.
+		// This is a potentionally costly operation, so it's only done
+		// if we have to (e.g: when the object count changes)
 		if(old_nobj != nobj) {
 			AllocAndInitPrims();
 		}

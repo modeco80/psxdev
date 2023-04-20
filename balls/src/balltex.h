@@ -10,6 +10,7 @@
  *	Coded: 1993/07/27 M.Suzuoki (Sony)	
  */
 
+#if 0
 /* 4bit 16x8 ball pattern */
 static u_long	ball16x8[] = {
 	0x42110000,0x00055554,0x54321000,0x00677665,
@@ -17,6 +18,7 @@ static u_long	ball16x8[] = {
 	0xa9876530,0xdeeeddcb,0xa9887500,0x0effeddb,
 	0xba970000,0x000eeedc,0xa9000000,0x00000dcb
 };
+#endif
 
 /* 4bit 16x16 ball pattern */
 static u_long	ball16x16[] = {
