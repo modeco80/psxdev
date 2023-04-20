@@ -193,6 +193,9 @@ class BallsDemo {
 		db[0].Init(__builtin_bit_cast(u8*, 0x80020000));
 		db[1].Init(__builtin_bit_cast(u8*, 0x80030000));
 
+		// Allocate primitives
+		AllocAndInitPrims();
+
 		SetDispMask(1);
 	}
 
@@ -202,6 +205,27 @@ class BallsDemo {
 	}
 
 	bool ShouldExit() const { return shouldExit; }
+
+	void AllocAndInitPrimsOnDb(DrawBuffer& db) {
+		db.primBuf.Reset();
+		auto* prims = db.primBuf.AllocPrim<SPRT_16>(nobj);
+
+		for(u32 i = 0; i < nobj; ++i) {
+			setSprt16(&prims[i]);	   // set SPRT_16
+			SetSemiTrans(&prims[i], 1); // semi-ambient is ON
+			SetShadeTex(&prims[i], 1);  // shaded texture is OFF
+			setUV0(&prims[i], 0, 0);	   // texture uv is (0,0)
+			(&prims[i])->clut = cdb->clut[objpos[i].clutIndex];
+
+			// Assign the primitive to the ball.
+			objpos[i].prim = &prims[i];
+		}
+	}
+
+	void AllocAndInitPrims() {
+		AllocAndInitPrimsOnDb(db[0]);
+		AllocAndInitPrimsOnDb(db[1]);
+	}
 
 	void Frame() {
 		this->ReadPad();
@@ -222,25 +246,6 @@ class BallsDemo {
 		// Clear the current ordering table
 		ClearOTag(&cdb->ot[0], OTSIZE);
 
-		// Allocate space in the dynamic primitive buffer for
-		// the amount of sprites we need.
-		//
-		// A better pattern might be to allocate on start & initalize stuff we want,
-		// but if the count changes only then re-allocate. This will allow us to mix
-		// primitive types still; but avoid allocating (even if from the primitive pool; 
-		// which is "supposed" to be faster than a more compliciated allocation system)
-		// every single frame; which does end up slowing things down.
-		auto* prims = cdb->primBuf.AllocPrim<SPRT_16>(nobj);
-
-		// Initalize said sprites.
-		for(int i = 0; i < nobj; i++) {
-			setSprt16(&prims[i]);	   // set SPRT_16
-			SetSemiTrans(&prims[i], 1); // semi-ambient is ON
-			SetShadeTex(&prims[i], 1);  // shaded texture is OFF
-			setUV0(&prims[i], 0, 0);	   // texture uv is (0,0)
-			(&prims[i])->clut = cdb->clut[objpos[i].clutIndex];
-		}
-
 		// update sprites
 		for(int i = 0; i < nobj; i++) {
 			int x;
@@ -251,11 +256,8 @@ class BallsDemo {
 			if((y = ((&objpos[i])->y += (&objpos[i])->dy) % WALL_Y * 2) >= WALL_Y)
 				y = WALL_Y * 2 - y;
 
-			setXY0(&prims[i], x, y);
-
-			// Append to current ordering table
-			//AddPrim(&cdb->ot[0], &cdb->sprt[i]);
-			cdb->AddPrimitive(&prims[i]);
+			setXY0(objpos[i].prim, x, y);
+			cdb->AddPrimitive(objpos[i].prim);
 		}
 
 		// Wait for end of drawing
@@ -285,6 +287,7 @@ class BallsDemo {
 
 	void ReadPad() {
 		u_long padd = PadRead(1);
+		auto old_nobj = nobj;
 
 		if(padd & PADLup)
 			nobj += 10;
@@ -302,6 +305,11 @@ class BallsDemo {
 		}
 
 		limitRange(nobj, 1, MAXOBJ - 1); // set n to 1<=n<= (MAXOBJ-1). see libgpu.h
+
+		// Re-allocate primitives.
+		if(old_nobj != nobj) {
+			AllocAndInitPrims();
+		}
 	}
 };
 
